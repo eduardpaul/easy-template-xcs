@@ -8,6 +8,7 @@
     <PackageId>EasyTemplateXCS</PackageId>
     <IsPackable>true</IsPackable>
     <Authors>alonrbar; Eduard Paul Lakida</Authors>
+    <RepositoryUrl>https://github.com/eduardpaul/easy-template-xcs</RepositoryUrl>
     <RootNamespace>EasyTemplateXCS</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
