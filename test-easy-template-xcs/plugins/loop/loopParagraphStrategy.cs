@@ -72,9 +72,8 @@ public class LoopParagraphStrategyTests
 
         var paragraph = nodesToRepeat[0];
         var run = paragraph.ChildElements?.FirstOrDefault();
-        var wordTextNode = run?.ChildElements?.FirstOrDefault();
-        var textNode = wordTextNode?.ChildElements?.FirstOrDefault() as Text;
-        Assert.NotNull(textNode);
-        Assert.Equal("before", textNode.Text);
+        var wordTextNode = run?.ChildElements?.FirstOrDefault() as Text;
+        Assert.NotNull(wordTextNode);
+        Assert.Equal("before", wordTextNode.Text);
     }
 }
