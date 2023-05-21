@@ -83,7 +83,6 @@ public class TagParser
         DelimiterMark[] allDelimiters
     )
     {
-
         var startTextNode = openDelimiter.XmlTextNode;
         var endTextNode = closeDelimiter.XmlTextNode;
         var sameNode = (startTextNode == endTextNode);
@@ -101,7 +100,7 @@ public class TagParser
         // trim end
         if (closeDelimiter.Index < endTextNode.Text.Length - 1)
         {
-            DocParserHelpers.SplitTextNode(endTextNode, closeDelimiter.Index + this.delimiters.TagEnd.Length, true);
+            endTextNode = DocParserHelpers.SplitTextNode(endTextNode, closeDelimiter.Index + this.delimiters.TagEnd.Length, true);
             if (sameNode)
             {
                 startTextNode = endTextNode;

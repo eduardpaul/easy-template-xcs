@@ -159,7 +159,7 @@ public static class DocParserHelpers
         // create run clone
         var leftRun = runNode.CloneNode(false);
         var rightRun = runNode;
-        leftRun.InsertBeforeSelf(rightRun);
+        rightRun.InsertBeforeSelf(leftRun);
 
         // copy props from original run node (preserve style)
         var runProps = FirstChildOfType<RunProperties>(runNode);
@@ -188,7 +188,7 @@ public static class DocParserHelpers
         // create paragraph clone
         var leftPara = containingParagraph.CloneNode(false);
         var rightPara = containingParagraph;
-        leftPara.InsertBeforeSelf(rightPara);
+        rightPara.InsertBeforeSelf(leftPara);
 
         // copy props from original paragraph (preserve style)
         var paragraphProps = FirstChildOfType<ParagraphProperties>(rightPara);
@@ -241,17 +241,10 @@ public static class DocParserHelpers
 
     public static bool IsEmptyTextNode(OpenXmlElement node)
     {
-        if (!(node is Text))
+        if (!(node is Text text))
             throw new Exception($"Text node expected but '{node.LocalName}' received.");
 
-        if (!node.HasChildren)
-            return true;
-
-        var xmlTextNode = node.FirstChild as Text;
-        if (xmlTextNode == null)
-            throw new Exception("Invalid XML structure. 'w:t' node should contain a single text node only.");
-
-        if (string.IsNullOrEmpty(xmlTextNode.Text))
+        if (string.IsNullOrEmpty(text.Text))
             return true;
 
         return false;
@@ -266,6 +259,10 @@ public static class DocParserHelpers
 
     public static T FirstChildOfType<T>(OpenXmlElement node) where T : OpenXmlElement
     {
+        if (node == null)
+            throw new ArgumentNullException(nameof(node));
+        if (node is T)
+            return node as T;
         if (!node.HasChildren)
             return null;
         return node?.ChildElements?.FirstOrDefault(n => n is T) as T;
@@ -274,7 +271,7 @@ public static class DocParserHelpers
     /**
      * Returns all siblings between 'firstNode' and 'lastNode' inclusive.
      */
-    public static OpenXmlElement[] SiblingsInRange(OpenXmlElement firstNode, OpenXmlElement lastNode)
+    public static List<OpenXmlElement> SiblingsInRange(OpenXmlElement firstNode, OpenXmlElement lastNode)
     {
         if (firstNode == null)
             throw new ArgumentNullException(nameof(firstNode));
@@ -293,7 +290,7 @@ public static class DocParserHelpers
             throw new Exception("Nodes are not siblings.");
 
         range.Add(lastNode);
-        return range.ToArray();
+        return range;
     }
 
     public static bool IsListParagraph(OpenXmlElement paragraphNode)

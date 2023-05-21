@@ -59,21 +59,21 @@ public class LoopParagraphStrategy : ILoopStrategy
         return new SplitBeforeResult
         {
             FirstNode = firstParagraph,
-            NodesToRepeat = middleParagraphs.ToArray(),
+            NodesToRepeat = middleParagraphs,
             LastNode = lastParagraph
         };
     }
 
-    public void MergeBack(OpenXmlElement[][] compiledNodes, OpenXmlElement firstParagraph, OpenXmlElement lastParagraph)
+    public void MergeBack(List<List<OpenXmlElement>> compiledNodes, OpenXmlElement firstParagraph, OpenXmlElement lastParagraph)
     {
         OpenXmlElement mergeTo = firstParagraph;
-        foreach (OpenXmlElement[] curParagraphsGroup in compiledNodes)
+        foreach (List<OpenXmlElement> curParagraphsGroup in compiledNodes)
         {
             // merge first paragraphs
             DocParserHelpers.JoinParagraphs(mergeTo, curParagraphsGroup[0]);
 
             // add middle and last paragraphs to the original document
-            for (int i = 1; i < curParagraphsGroup.Length; i++)
+            for (int i = 1; i < curParagraphsGroup.Count; i++)
             {
                 curParagraphsGroup[i].InsertBeforeSelf(lastParagraph);
                 mergeTo = curParagraphsGroup[i];

@@ -37,7 +37,7 @@ public class LoopTableStrategy : ILoopStrategy
         };
     }
 
-    public void MergeBack(OpenXmlElement[][] compiledNodes, OpenXmlElement firstParagraph, OpenXmlElement lastParagraphs)
+    public void MergeBack(List<List<OpenXmlElement>> compiledNodes, OpenXmlElement firstParagraph, OpenXmlElement lastParagraphs)
     {
         foreach (var curParagraphsGroup in compiledNodes)
             foreach (var paragraph in curParagraphsGroup)

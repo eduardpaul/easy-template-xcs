@@ -13,7 +13,7 @@ public abstract class TemplatePlugin
 
     protected PluginUtilities Utilities;
 
-    public void SetUtilities(PluginUtilities utilities)
+    public virtual void SetUtilities(PluginUtilities utilities)
     {
         Utilities = utilities;
     }
