@@ -389,4 +389,76 @@ public class TagParserTests
         Assert.Equal(TagDisposition.Open, tags[0].Disposition);
         Assert.Equal("{#loop}", tags[0].RawText);
     }
+
+    [Fact]
+    public void ParseSingleTag_SplittedClosing()
+    {
+        var paragraph = new Paragraph(
+            new Run(
+                new Text("{#loop}{text}{/")
+            ),
+            new Run(
+                new Text("loop")
+            ),
+            new Run(
+                new Text("}")
+            ));
+
+        var firstTextNode = (Text)paragraph.ChildElements[0].ChildElements[0];
+        var secondTextNode = (Text)paragraph.ChildElements[1].ChildElements[0];
+        var thirdTextNode = (Text)paragraph.ChildElements[2].ChildElements[0];
+
+        var delimiters = new[]{
+            new DelimiterMark
+            {
+                IsOpen = true,
+                Index = 0,
+                XmlTextNode = firstTextNode
+            },
+            new DelimiterMark{
+                IsOpen = false,
+                Index= 6,
+                XmlTextNode = firstTextNode
+            },
+            new DelimiterMark{
+                IsOpen = true,
+                Index= 7,
+                XmlTextNode = firstTextNode
+            },
+            new DelimiterMark{
+                IsOpen = false,
+                Index= 12,
+                XmlTextNode = firstTextNode
+            },
+            new DelimiterMark{
+                IsOpen = true,
+                Index= 13,
+                XmlTextNode = firstTextNode
+            },
+            new DelimiterMark{
+                IsOpen = false,
+                Index= 0,
+                XmlTextNode = thirdTextNode
+            }
+        };
+
+        var options = new TemplateHandlerOptions();
+        var tagParser = new TagParser(options.Delimiters);
+        var tags = tagParser.Parse(delimiters);
+
+        Assert.Equal(3, tags.Length);
+
+        // tag
+        Assert.Equal("loop", tags[0].Name);
+        Assert.Equal(TagDisposition.Open, tags[0].Disposition);
+        Assert.Equal("{#loop}", tags[0].RawText);
+
+        Assert.Equal("text", tags[1].Name);
+        Assert.Equal(TagDisposition.SelfClosed, tags[1].Disposition);
+        Assert.Equal("{text}", tags[1].RawText);
+
+        Assert.Equal("loop", tags[2].Name);
+        Assert.Equal(TagDisposition.Close, tags[2].Disposition);
+        Assert.Equal("{/loop}", tags[2].RawText);
+    }
 }
