@@ -58,7 +58,7 @@ public static class DocParserHelpers
                 }
                 else
                 {
-                    curWordTextNode = curWordTextNode.NextSibling();
+                    curWordTextNode = curWordTextNode.NextSibling<Text>();
                 }
 
                 // remove current text node
@@ -76,7 +76,7 @@ public static class DocParserHelpers
             }
             else
             {
-                curRunNode = curRunNode.NextSibling() as Run;
+                curRunNode = curRunNode.NextSibling<Run>();
             }
 
             // remove current run
