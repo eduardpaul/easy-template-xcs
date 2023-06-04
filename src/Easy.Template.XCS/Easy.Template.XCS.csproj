@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>netstandard2.0;net6.0</TargetFrameworks>
+    <LangVersion>10.0</LangVersion>
+    <RootNamespace>Easy.Template.XCS</RootNamespace>
+    <AssemblyName>Easy.Template.XCS</AssemblyName>
+    <Version>0.0.1-alpha</Version>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <Copyright>Easy.Template.XCS</Copyright>
+    <Company>Easy.Template.XCS</Company>
+    <Authors>alonrbar and easy-template-x contributors; Eduard Paul Lakida</Authors>
+    <PackageProjectUrl>https://github.com/eduardpaul/easy-template-xcs</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/eduardpaul/easy-template-xcs</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+
+    <PackageVersion>0.0.1-alpha</PackageVersion>
+    <PackageId>Easy.Template.XCS</PackageId>
+    <IsPackable>true</IsPackable>
+    <PackageTags>Word;Templates;Document</PackageTags>
+
+  </PropertyGroup>
+  <PropertyGroup>
+    <Summary>(Work in progress) Port to .net core of https://github.com/alonrbar/easy-template-x</Summary>
+    <Description>
+      <![CDATA[Not ready for any kind of real usage. Only partial port of easy-template-x to .net core.
+
+- TBD.]]>
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="DocumentFormat.OpenXml" Version="2.20.0" />
+    <PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.1.1" PrivateAssets="All"/>
+  </ItemGroup>
+</Project>

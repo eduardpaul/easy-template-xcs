@@ -1,0 +1,28 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "easy-template-xcs", "Easy.Template.XCS\Easy.Template.XCS.csproj", "{FC85E59F-190F-4F61-894D-8341F9664C59}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "test-easy-template-xcs", "Easy.Template.XCS.Test\Easy.Template.XCS.Test.csproj", "{1D4A42E3-1C1B-4516-8E9E-A5853AB53035}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{FC85E59F-190F-4F61-894D-8341F9664C59}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FC85E59F-190F-4F61-894D-8341F9664C59}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FC85E59F-190F-4F61-894D-8341F9664C59}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FC85E59F-190F-4F61-894D-8341F9664C59}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1D4A42E3-1C1B-4516-8E9E-A5853AB53035}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1D4A42E3-1C1B-4516-8E9E-A5853AB53035}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1D4A42E3-1C1B-4516-8E9E-A5853AB53035}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1D4A42E3-1C1B-4516-8E9E-A5853AB53035}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
