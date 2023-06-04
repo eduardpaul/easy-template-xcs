@@ -7,9 +7,7 @@ namespace Easy.Template.XCS.Plugins.TextPlugin;
 
 public class TextPlugin : TemplatePlugin
 {
-    public const string TEXT_CONTENT_TYPE = "text";
-
-    public override string ContentType => TEXT_CONTENT_TYPE;
+    public override string ContentType => "text";
 
     public override Task SimpleTagReplacements(Tag tag, ScopeData data, TemplateContext context)
     {

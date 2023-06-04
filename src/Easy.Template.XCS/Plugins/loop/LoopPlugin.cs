@@ -8,9 +8,7 @@ namespace Easy.Template.XCS.Plugins.LoopPlugin;
 
 public class LoopPlugin : TemplatePlugin
 {
-    public const string LOOP_CONTENT_TYPE = "loop";
-
-    public override string ContentType => LOOP_CONTENT_TYPE;
+    public override string ContentType => "loop";
 
     private readonly List<ILoopStrategy> loopStrategies = new List<ILoopStrategy>
         {
@@ -18,7 +16,7 @@ public class LoopPlugin : TemplatePlugin
             new LoopListStrategy(),
             new LoopParagraphStrategy() // the default strategy
         };
-
+    
     public override void SetUtilities(PluginUtilities utilities)
     {
         base.SetUtilities(utilities);

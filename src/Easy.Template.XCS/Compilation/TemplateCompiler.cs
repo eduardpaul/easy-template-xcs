@@ -97,7 +97,7 @@ public class TemplateCompiler
     {
         // explicit content type
         var scopeData = data.GetScopeData();
-        if (PluginContentExtensions.IsPluginContent(scopeData))
+        if (PluginContent.IsPluginContent(scopeData))
             return ((PluginContent)scopeData)._type;
         
         // implicit - loop

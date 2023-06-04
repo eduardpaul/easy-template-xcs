@@ -1,14 +1,10 @@
 namespace Easy.Template.XCS.Plugins;
 
-public interface PluginContent
-{
-    string _type { get; set; }
-}
+public abstract class PluginContent { 
+    public string _type { get; set; }
 
-public static class PluginContentExtensions
-{
-    public static bool IsPluginContent(this object content)
+    public static bool IsPluginContent(dynamic content)
     {
-        return content is PluginContent;
+        return false; 
     }
 }
