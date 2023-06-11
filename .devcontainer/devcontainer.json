@@ -14,7 +14,7 @@
             "version": "latest"
         }
     },
-    "workspaceFolder": "/src/",
+    "workspaceFolder": "/workspaces/easy-template-xcs/src/",
     "postCreateCommand": "dotnet restore && dotnet test",
     "remoteUser": "vscode",
     "customizations": {
