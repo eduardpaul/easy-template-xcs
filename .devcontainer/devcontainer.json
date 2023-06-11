@@ -1,0 +1,33 @@
+{
+    "name": "Easy.Template.XCS Dev container (dotnet 6)",
+    "image": "mcr.microsoft.com/devcontainers/dotnet:0-6.0",
+    "features": {
+        "ghcr.io/devcontainers/features/common-utils:2": {
+            "installZsh": true,
+            "installOhMyZsh": true,
+            "upgradePackages": true,
+            "username": "vscode",
+            "userUid": "automatic",
+            "userGid": "automatic"
+        },
+        "ghcr.io/devcontainers/features/github-cli:1": {
+            "version": "latest"
+        }
+    },
+    "workspaceFolder": "/src/",
+    "postCreateCommand": "dotnet restore && dotnet test",
+    "remoteUser": "vscode",
+    "customizations": {
+        "vscode": {
+            "settings": {
+            },
+            "extensions": [
+                "formulahendry.dotnet-test-explorer",
+                "ms-dotnettools.csharp",
+                "GitHub.remotehub",
+                "yuenm18.ooxml-viewer",
+                "GitHub.vscode-pull-request-github"
+            ]
+        }
+    }
+}
