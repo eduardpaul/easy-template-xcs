@@ -1,47 +1,89 @@
+using System.Globalization;
+using Easy.Template.XCS.Utils;
+
 namespace Easy.Template.XCS.Compilation;
 
-public class PathPart
+/// <summary>
+/// A single part of the data path - either a tag or a loop index.
+/// </summary>
+public sealed class PathPart
 {
-    public Tag? Tag { get; set; }
-    public int? Number { get; set; }
+    public Tag? Tag { get; }
+
+    public int? Index { get; }
+
+    public bool IsIndex => Index.HasValue;
+
+    private PathPart(Tag? tag, int? index)
+    {
+        Tag = tag;
+        Index = index;
+    }
+
+    public static PathPart FromTag(Tag tag) => new(tag, null);
+
+    public static PathPart FromIndex(int index) => new(null, index);
+
+    public static implicit operator PathPart(Tag tag) => FromTag(tag);
+
+    public static implicit operator PathPart(int index) => FromIndex(index);
+
+    public override string ToString() => Index.HasValue ? Index.Value.ToString(CultureInfo.InvariantCulture) : Tag!.Name;
 }
 
-public class ScopeDataArgs
+public sealed class ScopeDataArgs
 {
-    public List<PathPart> Path { get; set; }
+    public required IReadOnlyList<PathPart> Path { get; init; }
 
-    /**
-    * The string representation of the path.
-    */
-    public List<string> StrPath { get; set; }
-    public object Data { get; set; }
+    /// <summary>
+    /// The string representation of the path.
+    /// </summary>
+    public required IReadOnlyList<string> StrPath { get; init; }
+
+    public object? Data { get; init; }
 }
 
-public delegate object ScopeDataResolver(ScopeDataArgs args);
+public delegate object? ScopeDataResolver(ScopeDataArgs args);
 
 public class ScopeData
 {
-    public static object DefaultResolver(ScopeDataArgs args)
+    /// <summary>
+    /// The default scope data resolver: looks for the last path part in the
+    /// current scope, then in the parent scope and so on up to the root data
+    /// object.
+    /// </summary>
+    public static object? DefaultResolver(ScopeDataArgs args)
     {
-        return RecursiveObjectFindByPath(args.Data, args.StrPath.ToArray());
+        if (args.StrPath.Count == 0)
+            return args.Data;
+
+        var lastKey = args.StrPath[args.StrPath.Count - 1];
+        var curPath = new List<string>(args.StrPath);
+        while (curPath.Count > 0)
+        {
+            curPath.RemoveAt(curPath.Count - 1);
+            if (TemplateData.TryGetByPath(args.Data, curPath.Append(lastKey), out var result))
+                return result;
+        }
+        return null;
     }
 
-    public ScopeDataResolver scopeDataResolver;
-    public dynamic allData;
+    public ScopeDataResolver? Resolver { get; set; }
 
-    private readonly List<PathPart> path = new List<PathPart>();
-    private readonly List<string> strPath = new List<string>();
+    public object? AllData { get; }
 
-    public ScopeData(dynamic data)
+    private readonly List<PathPart> path = new();
+    private readonly List<string> strPath = new();
+
+    public ScopeData(object? data)
     {
-        allData = data;
+        AllData = data;
     }
 
     public void PathPush(PathPart pathPart)
     {
         path.Add(pathPart);
-        var strItem = pathPart.Number.HasValue ? pathPart.Number.Value.ToString() : pathPart.Tag?.Name;
-        strPath.Add(strItem);
+        strPath.Add(pathPart.ToString());
     }
 
     public PathPart PathPop()
@@ -57,67 +99,27 @@ public class ScopeData
         return string.Join(".", strPath);
     }
 
-    public object GetScopeData()
+    /// <summary>
+    /// Get the data of the current scope.
+    /// </summary>
+    public object? GetScopeData()
     {
         var args = new ScopeDataArgs
         {
             Path = path,
             StrPath = strPath,
-            Data = allData
+            Data = AllData
         };
-        if (scopeDataResolver != null)
-        {
-            return scopeDataResolver(args);
-        }
-        return DefaultResolver(args);
+
+        var resolver = Resolver ?? DefaultResolver;
+        return TemplateData.Unwrap(resolver(args));
     }
 
-    private static object RecursiveObjectFindByPath(object data, string[] path)
+    /// <summary>
+    /// Get the data of the current scope, converted to the specified content type.
+    /// </summary>
+    public T? GetScopeData<T>() where T : class, new()
     {
-        var currentPropertyName = path[0];
-
-        if (data is Array)
-        {
-            var array = data as Array;
-            var index = int.Parse(currentPropertyName);
-            var value = array.GetValue(index);
-            if (path.Length == 1)
-            {
-                return value;
-            }
-            else
-            {
-                return RecursiveObjectFindByPath(value, path.Skip(1).ToArray());
-            }
-        }
-        else if (data is IDictionary<string, object>)
-        {
-            var props = data as IDictionary<string, object>;
-            if (path.Length == 1)
-            {
-                return props[currentPropertyName];
-            }
-            else
-            {
-                return RecursiveObjectFindByPath(props[currentPropertyName], path.Skip(1).ToArray());
-            }
-        }
-        else
-        {
-            var value = ReflectPropertyValue(data, currentPropertyName);
-            if (path.Length == 1)
-            {
-                return value;
-            }
-            else
-            {
-                return RecursiveObjectFindByPath(value, path.Skip(1).ToArray());
-            }
-        }
-    }
-    
-    private static object ReflectPropertyValue(object source, string property)
-    {
-        return source.GetType().GetProperty(property).GetValue(source, null);
+        return ContentMapper.Map<T>(GetScopeData());
     }
 }

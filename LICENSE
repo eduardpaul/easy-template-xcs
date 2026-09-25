@@ -1,5 +1,6 @@
 MIT License
 
+Copyright (c) 2018 Alon Bar and easy-template-x contributors
 Copyright (c) 2023 Eduard Paul
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -19,3 +20,19 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+ATTRIBUTION
+
+Easy.Template.XCS is a derivative work: a port to .NET of easy-template-x
+(https://github.com/alonrbar/easy-template-x) by Alon Bar, which is licensed
+under the MIT License and whose copyright notice is reproduced above.
+
+Portions of this repository derive directly from easy-template-x, including:
+
+  - The overall design, algorithms and API surface of the library.
+  - Source code comments carried over from the original implementation.
+  - The test fixture documents and image resources under
+    src/Easy.Template.XCS.Test/Fixtures/, which are copied verbatim from the
+    easy-template-x test suite.

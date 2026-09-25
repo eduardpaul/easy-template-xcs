@@ -1,25 +1,28 @@
 using DocumentFormat.OpenXml;
+using Easy.Template.XCS.Compilation.Delimiters;
+using Easy.Template.XCS.Errors;
 using Easy.Template.XCS.Plugins;
+using Easy.Template.XCS.Utils;
 
 namespace Easy.Template.XCS.Compilation;
 
-public class TemplateCompilerOptions
+public sealed class TemplateCompilerOptions
 {
-    public string DefaultContentType { get; set; }
-    public string ContainerContentType { get; set; }
-    public bool SkipEmptyTags { get; set; }
+    public required string DefaultContentType { get; init; }
+    public required string ContainerContentType { get; init; }
+    public bool SkipEmptyTags { get; init; }
 }
 
-/**
- * The TemplateCompiler works roughly the same way as a source code compiler.
- * It's main steps are:
- *
- * 1. find delimiters (lexical analysis) :: (Document) => DelimiterMark[]
- * 2. extract tags (syntax analysis) :: (DelimiterMark[]) => Tag[]
- * 3. perform document replace (code generation) :: (Tag[], data) => Document*
- *
- * see: https://en.wikipedia.org/wiki/Compiler
- */
+/// <summary>
+/// The TemplateCompiler works roughly the same way as a source code compiler.
+/// It's main steps are:
+///
+/// 1. find delimiters (lexical analysis) :: (Document) => DelimiterMark[]
+/// 2. extract tags (syntax analysis) :: (DelimiterMark[]) => Tag[]
+/// 3. perform document replace (code generation) :: (Tag[], data) => Document*
+///
+/// see: https://en.wikipedia.org/wiki/Compiler
+/// </summary>
 public class TemplateCompiler
 {
     private readonly Dictionary<string, TemplatePlugin> pluginsLookup;
@@ -30,63 +33,60 @@ public class TemplateCompiler
     public TemplateCompiler(
         DelimiterSearcher delimiterSearcher,
         TagParser tagParser,
-        List<TemplatePlugin> plugins,
-        TemplateCompilerOptions options
-    )
+        IEnumerable<TemplatePlugin> plugins,
+        TemplateCompilerOptions options)
     {
         this.delimiterSearcher = delimiterSearcher;
         this.tagParser = tagParser;
         this.options = options;
-        this.pluginsLookup = plugins.ToDictionary(p => p.ContentType);
+        pluginsLookup = new Dictionary<string, TemplatePlugin>(StringComparer.Ordinal);
+        foreach (var plugin in plugins)
+            pluginsLookup[plugin.ContentType] = plugin;
     }
 
-    /**
-     * Compiles the template and performs the required replacements using the
-     * specified data.
-     */
-    public async Task Compile(OpenXmlElement node, ScopeData data, TemplateContext context)
+    /// <summary>
+    /// Compiles the template and performs the required replacements using the
+    /// specified data.
+    /// </summary>
+    public async Task CompileAsync(OpenXmlElement node, ScopeData data, TemplateContext context)
     {
-        var tags = this.ParseTags(node);
-        await this.DoTagReplacements(tags, data, context);
+        var tags = ParseTags(node);
+        await DoTagReplacementsAsync(tags, data, context).ConfigureAwait(false);
     }
 
     public List<Tag> ParseTags(OpenXmlElement node)
     {
-        var delimiters = this.delimiterSearcher.FindDelimiters(node);
-        var tags = this.tagParser.Parse(delimiters.ToArray()).ToList();
-        return tags;
+        var delimiters = delimiterSearcher.FindDelimiters(node);
+        return tagParser.Parse(delimiters);
     }
 
-    private async Task DoTagReplacements(List<Tag> tags, ScopeData data, TemplateContext context)
+    //
+    // private methods
+    //
+
+    private async Task DoTagReplacementsAsync(List<Tag> tags, ScopeData data, TemplateContext context)
     {
-        for (int tagIndex = 0; tagIndex < tags.Count; tagIndex++)
+        for (var tagIndex = 0; tagIndex < tags.Count; tagIndex++)
         {
             var tag = tags[tagIndex];
-            data.PathPush(new PathPart() { Tag = tag });
-            var contentType = this.DetectContentType(tag, data);
-            this.pluginsLookup.TryGetValue(contentType, out var plugin);
-            if (plugin == null)
-            {
-                throw new UnknownContentTypeException(
-                    contentType,
-                    tag.RawText,
-                    data.PathString()
-                );
-            }
+            data.PathPush(tag);
+            var contentType = DetectContentType(tag, data);
+            if (!pluginsLookup.TryGetValue(contentType, out var plugin))
+                throw new UnknownContentTypeException(contentType, tag.RawText, data.PathString());
 
             if (tag.Disposition == TagDisposition.SelfClosed)
             {
-                await this.SimpleTagReplacements(plugin, tag, data, context);
+                await SimpleTagReplacementsAsync(plugin, tag, data, context).ConfigureAwait(false);
             }
             else if (tag.Disposition == TagDisposition.Open)
             {
                 // get all tags between the open and close tags
-                var closingTagIndex = this.FindCloseTagIndex(tagIndex, tag, tags);
+                var closingTagIndex = FindCloseTagIndex(tagIndex, tag, tags);
                 var scopeTags = tags.GetRange(tagIndex, closingTagIndex - tagIndex + 1);
                 tagIndex = closingTagIndex;
 
                 // replace container tag
-                await plugin.ContainerTagReplacements(scopeTags, data, context);
+                await plugin.ContainerTagReplacementsAsync(scopeTags, data, context).ConfigureAwait(false);
             }
 
             data.PathPop();
@@ -97,31 +97,30 @@ public class TemplateCompiler
     {
         // explicit content type
         var scopeData = data.GetScopeData();
-        if (PluginContent.IsPluginContent(scopeData))
-            return ((PluginContent)scopeData)._type;
-        
+        var pluginContentType = TemplateData.GetPluginContentType(scopeData);
+        if (pluginContentType != null)
+            return pluginContentType;
+
         // implicit - loop
-        if (tag.Disposition == TagDisposition.Open || tag.Disposition == TagDisposition.Close)
-        {
-            return this.options.ContainerContentType;
-        }
+        if (tag.Disposition is TagDisposition.Open or TagDisposition.Close)
+            return options.ContainerContentType;
 
         // implicit - text
-        return this.options.DefaultContentType;
+        return options.DefaultContentType;
     }
 
-    private async Task SimpleTagReplacements(TemplatePlugin plugin, Tag tag, ScopeData data, TemplateContext context)
+    private async Task SimpleTagReplacementsAsync(TemplatePlugin plugin, Tag tag, ScopeData data, TemplateContext context)
     {
-        if (this.options.SkipEmptyTags && string.IsNullOrEmpty(data.GetScopeData().ToString()))
+        if (options.SkipEmptyTags && TemplateData.StringValue(data.GetScopeData()).Length == 0)
             return;
 
-        await plugin.SimpleTagReplacements(tag, data, context);
+        await plugin.SimpleTagReplacementsAsync(tag, data, context).ConfigureAwait(false);
     }
 
-    private int FindCloseTagIndex(int fromIndex, Tag openTag, List<Tag> tags)
+    private static int FindCloseTagIndex(int fromIndex, Tag openTag, List<Tag> tags)
     {
         var openTags = 0;
-        for (int i = fromIndex; i < tags.Count; i++)
+        for (var i = fromIndex; i < tags.Count; i++)
         {
             var tag = tags[i];
             if (tag.Disposition == TagDisposition.Open)
@@ -134,22 +133,18 @@ public class TemplateCompiler
             {
                 openTags--;
                 if (openTags == 0)
-                {
                     return i;
-                }
 
                 if (openTags < 0)
                 {
                     // As long as we don't change the input to
                     // this method (fromIndex in particular) this
                     // should never happen.
-                    throw new UnopenedTagException(tag.Name);
+                    throw new UnopenedTagException(tag.Name, tag.RawText);
                 }
-
-                continue;
             }
         }
 
-        throw new UnclosedTagException(openTag.Name);
+        throw new UnclosedTagException(openTag.Name, openTag.RawText);
     }
 }

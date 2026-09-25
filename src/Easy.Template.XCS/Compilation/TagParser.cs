@@ -1,125 +1,214 @@
-
 using System.Text.RegularExpressions;
+using DocumentFormat.OpenXml;
+using DocumentFormat.OpenXml.Wordprocessing;
+using Easy.Template.XCS.Compilation.Delimiters;
+using Easy.Template.XCS.Errors;
+using Easy.Template.XCS.Office;
+using Easy.Template.XCS.Utils;
+using Easy.Template.XCS.Xml;
+using Drawing = DocumentFormat.OpenXml.Wordprocessing.Drawing;
+using WpInline = DocumentFormat.OpenXml.Drawing.Wordprocessing.Inline;
 
 namespace Easy.Template.XCS.Compilation;
 
 public class TagParser
 {
     private readonly Regex tagRegex;
-    private readonly Delimiters delimiters;
+    private readonly XCS.Delimiters delimiters;
 
-    public TagParser(Delimiters delimiters)
+    public TagParser(XCS.Delimiters delimiters)
     {
-        if (delimiters == null)
-            throw new ArgumentNullException(nameof(delimiters));
+        if (delimiters is null)
+            throw new InternalArgumentMissingException(nameof(delimiters));
 
         this.delimiters = delimiters;
-        this.tagRegex = new Regex($"^{Regex.Escape(delimiters.TagStart)}(.*?){Regex.Escape(delimiters.TagEnd)}", RegexOptions.Multiline);
+        tagRegex = TagUtils.TagRegex(delimiters);
     }
 
-    public Tag[] Parse(DelimiterMark[] delimiters)
+    public List<Tag> Parse(IReadOnlyList<DelimiterMark> delimiterMarks)
     {
         var tags = new List<Tag>();
 
-        Tag openedTag = null;
-        DelimiterMark openedDelimiter = null;
-        for (int i = 0; i < delimiters.Length; i++)
+        DelimiterMark? openedTextDelimiter = null;
+        DelimiterMark? openedAttributeDelimiter = null;
+
+        for (var i = 0; i < delimiterMarks.Count; i++)
         {
-            var delimiter = delimiters[i];
-
-            // close before open
-            if (openedTag == null && !delimiter.IsOpen)
+            switch (delimiterMarks[i].Placement)
             {
-                var closeTagText = delimiter.XmlTextNode.Text;
-                throw new MissingStartDelimiterException(closeTagText);
-            }
-
-            // open before close
-            if (openedTag != null && delimiter.IsOpen)
-            {
-                var openTagText = openedDelimiter.XmlTextNode.Text;
-                throw new MissingCloseDelimiterException(openTagText);
-            }
-
-            // valid open
-            if (openedTag == null && delimiter.IsOpen)
-            {
-                openedTag = new Tag();
-                openedDelimiter = delimiter;
-            }
-
-            // valid close
-            if (openedTag != null && !delimiter.IsOpen)
-            {
-
-                // normalize the underlying xml structure
-                // (make sure the tag's node only includes the tag's text)
-                NormalizeTagNodes(openedDelimiter, delimiter, i, delimiters);
-                openedTag.XmlTextNode = openedDelimiter.XmlTextNode;
-
-                // extract tag info from tag's text
-                ProcessTag(openedTag);
-                tags.Add(openedTag);
-                openedTag = null;
-                openedDelimiter = null;
+                case TagPlacement.TextNode:
+                    openedTextDelimiter = ProcessDelimiter(delimiterMarks, i, openedTextDelimiter, tags);
+                    break;
+                case TagPlacement.Attribute:
+                    openedAttributeDelimiter = ProcessDelimiter(delimiterMarks, i, openedAttributeDelimiter, tags);
+                    break;
+                default:
+                    throw new InternalException($"Unexpected delimiter placement value \"{delimiterMarks[i].Placement}\"");
             }
         }
 
-        return tags.ToArray();
+        return tags;
     }
 
-    /**
-     * Consolidate all tag's text into a single text node.
-     *
-     * Example:
-     *
-     * Text node before: "some text {some tag} some more text"
-     * Text nodes after: [ "some text ", "{some tag}", " some more text" ]
-     */
-    private void NormalizeTagNodes(
-        DelimiterMark openDelimiter,
-        DelimiterMark closeDelimiter,
+    private DelimiterMark? ProcessDelimiter(IReadOnlyList<DelimiterMark> delimiterMarks, int i, DelimiterMark? openedDelimiter, List<Tag> tags)
+    {
+        var delimiter = delimiterMarks[i];
+
+        // close before open
+        if (openedDelimiter is null && !delimiter.IsOpen)
+            throw new MissingStartDelimiterException(GetPartialTagText(delimiter));
+
+        // open before close
+        if (openedDelimiter != null && delimiter.IsOpen)
+            throw new MissingCloseDelimiterException(GetPartialTagText(openedDelimiter));
+
+        // valid open
+        if (openedDelimiter is null && delimiter.IsOpen)
+            openedDelimiter = delimiter;
+
+        // valid close
+        if (openedDelimiter != null && !delimiter.IsOpen)
+        {
+            // create the tag
+            var tag = ProcessDelimiterPair(openedDelimiter, delimiter, i, delimiterMarks);
+            PopulateTagFields(tag);
+            tags.Add(tag);
+            openedDelimiter = null;
+        }
+
+        return openedDelimiter;
+    }
+
+    private static string GetPartialTagText(DelimiterMark delimiter)
+    {
+        return delimiter switch
+        {
+            TextNodeDelimiterMark textDelimiter => textDelimiter.XmlTextNode.Text ?? string.Empty,
+            AttributeDelimiterMark attrDelimiter => XmlNodes.GetAttributeValue(attrDelimiter.XmlNode, attrDelimiter.AttributeName) ?? string.Empty,
+            _ => throw new InternalException($"Unexpected delimiter placement value \"{delimiter.Placement}\"")
+        };
+    }
+
+    private Tag ProcessDelimiterPair(DelimiterMark openDelimiter, DelimiterMark closeDelimiter, int closeDelimiterIndex, IReadOnlyList<DelimiterMark> allDelimiters)
+    {
+        if (openDelimiter is TextNodeDelimiterMark openText && closeDelimiter is TextNodeDelimiterMark closeText)
+            return ProcessTextNodeDelimiterPair(openText, closeText, closeDelimiterIndex, allDelimiters);
+
+        if (openDelimiter is AttributeDelimiterMark openAttr && closeDelimiter is AttributeDelimiterMark closeAttr)
+            return ProcessAttributeDelimiterPair(openAttr, closeAttr);
+
+        throw new InternalException($"Unexpected delimiter placement values. Open delimiter: \"{openDelimiter.Placement}\", Close delimiter: \"{closeDelimiter.Placement}\"");
+    }
+
+    private TextNodeTag ProcessTextNodeDelimiterPair(TextNodeDelimiterMark openDelimiter, TextNodeDelimiterMark closeDelimiter, int closeDelimiterIndex, IReadOnlyList<DelimiterMark> allDelimiters)
+    {
+        // verify tag delimiters are in the same paragraph
+        var openTextNode = openDelimiter.XmlTextNode;
+        var closeTextNode = closeDelimiter.XmlTextNode;
+        var sameNode = openTextNode == closeTextNode;
+        if (!sameNode)
+        {
+            var startParagraph = OfficeMarkup.Query.ContainingParagraphNode(openTextNode);
+            var endParagraph = OfficeMarkup.Query.ContainingParagraphNode(closeTextNode);
+            if (startParagraph != endParagraph)
+                throw new MissingCloseDelimiterException(openTextNode.Text ?? string.Empty);
+        }
+
+        // verify no inline drawing in the middle
+        var startRun = OfficeMarkup.Query.ContainingRunNode(openTextNode);
+        var endRun = OfficeMarkup.Query.ContainingRunNode(closeTextNode);
+        OpenXmlElement? currentRun = startRun;
+        while (currentRun != null && currentRun != endRun)
+        {
+            var drawing = currentRun.ChildElements.OfType<Drawing>().FirstOrDefault();
+            if (drawing?.ChildElements.OfType<WpInline>().Any() == true)
+                throw new MissingCloseDelimiterException(openTextNode.Text ?? string.Empty);
+
+            currentRun = currentRun.NextSibling();
+        }
+
+        // normalize the underlying xml structure
+        // (make sure the tag's node only includes the tag's text)
+        NormalizeTextTagNodes(openDelimiter, closeDelimiter, closeDelimiterIndex, allDelimiters);
+
+        // create the tag
+        return new TextNodeTag
+        {
+            XmlTextNode = openDelimiter.XmlTextNode,
+            RawText = openDelimiter.XmlTextNode.Text ?? string.Empty
+        };
+    }
+
+    private AttributeTag ProcessAttributeDelimiterPair(AttributeDelimiterMark openDelimiter, AttributeDelimiterMark closeDelimiter)
+    {
+        // verify tag delimiters are in the same attribute
+        var openNode = openDelimiter.XmlNode;
+        var closeNode = closeDelimiter.XmlNode;
+        var attrValue = XmlNodes.GetAttributeValue(openNode, openDelimiter.AttributeName) ?? string.Empty;
+
+        if (openNode != closeNode)
+            throw new MissingCloseDelimiterException(attrValue);
+
+        if (openDelimiter.AttributeName != closeDelimiter.AttributeName)
+            throw new MissingCloseDelimiterException(attrValue);
+
+        // create the tag
+        var tagText = attrValue.Substring(openDelimiter.Index, closeDelimiter.Index + delimiters.TagEnd.Length - openDelimiter.Index);
+        return new AttributeTag
+        {
+            XmlNode = openNode,
+            AttributeName = openDelimiter.AttributeName,
+            RawText = tagText
+        };
+    }
+
+    /// <summary>
+    /// Consolidate all tag's text into a single text node.
+    ///
+    /// Example:
+    ///
+    /// Text node before: "some text {some tag} some more text"
+    /// Text nodes after: [ "some text ", "{some tag}", " some more text" ]
+    /// </summary>
+    private void NormalizeTextTagNodes(
+        TextNodeDelimiterMark openDelimiter,
+        TextNodeDelimiterMark closeDelimiter,
         int closeDelimiterIndex,
-        DelimiterMark[] allDelimiters
-    )
+        IReadOnlyList<DelimiterMark> allDelimiters)
     {
         var startTextNode = openDelimiter.XmlTextNode;
         var endTextNode = closeDelimiter.XmlTextNode;
-        var sameNode = (startTextNode == endTextNode);
+        var sameNode = startTextNode == endTextNode;
 
         // trim start
         if (openDelimiter.Index > 0)
         {
-            DocParserHelpers.SplitTextNode(startTextNode, openDelimiter.Index, true);
+            OfficeMarkup.Modify.SplitTextNode(startTextNode, openDelimiter.Index, true);
             if (sameNode)
-            {
                 closeDelimiter.Index -= openDelimiter.Index;
-            }
         }
 
         // trim end
-        if (closeDelimiter.Index < endTextNode.Text.Length - 1)
+        if (closeDelimiter.Index < (endTextNode.Text?.Length ?? 0) - 1)
         {
-            endTextNode = DocParserHelpers.SplitTextNode(endTextNode, closeDelimiter.Index + this.delimiters.TagEnd.Length, true);
+            endTextNode = OfficeMarkup.Modify.SplitTextNode(endTextNode, closeDelimiter.Index + delimiters.TagEnd.Length, true);
             if (sameNode)
-            {
                 startTextNode = endTextNode;
-            }
         }
 
         // join nodes
         if (!sameNode)
         {
-            DocParserHelpers.JoinTextNodesRange(startTextNode, endTextNode);
+            OfficeMarkup.Modify.JoinTextNodesRange(startTextNode, endTextNode);
             endTextNode = startTextNode;
         }
 
         // update offsets of next delimiters
-        for (int i = closeDelimiterIndex + 1; i < allDelimiters.Length; i++)
+        for (var i = closeDelimiterIndex + 1; i < allDelimiters.Count; i++)
         {
-
-            bool updated = false;
-            var curDelimiter = allDelimiters[i];
+            var updated = false;
+            if (allDelimiters[i] is not TextNodeDelimiterMark curDelimiter)
+                break;
 
             if (curDelimiter.XmlTextNode == openDelimiter.XmlTextNode)
             {
@@ -129,7 +218,7 @@ public class TagParser
 
             if (curDelimiter.XmlTextNode == closeDelimiter.XmlTextNode)
             {
-                curDelimiter.Index -= closeDelimiter.Index + this.delimiters.TagEnd.Length;
+                curDelimiter.Index -= closeDelimiter.Index + delimiters.TagEnd.Length;
                 updated = true;
             }
 
@@ -142,34 +231,53 @@ public class TagParser
         closeDelimiter.XmlTextNode = endTextNode;
     }
 
-    private void ProcessTag(Tag tag)
+    private void PopulateTagFields(Tag tag)
     {
-        tag.RawText = tag.XmlTextNode.Text;
+        if (string.IsNullOrEmpty(tag.RawText))
+            throw new InternalException("tag.RawText is required");
 
-        var tagParts = this.tagRegex.Match(tag.RawText);
-        var tagContent = (tagParts.Groups[1].Value ?? "").Trim();
-        if (string.IsNullOrEmpty(tagContent))
+        var tagParts = tagRegex.Match(tag.RawText);
+        var tagName = tagParts.Groups["tagName"].Value.Trim();
+
+        // ignoring empty tags
+        if (tagName.Length == 0)
         {
             tag.Disposition = TagDisposition.SelfClosed;
             return;
         }
 
-        if (tagContent.StartsWith(this.delimiters.ContainerTagOpen))
+        // tag options
+        var tagOptionsText = tagParts.Groups["tagOptions"].Value.Trim();
+        if (tagOptionsText.Length > 0)
+        {
+            try
+            {
+                tag.Options = TagOptionsParser.Parse(TextUtils.NormalizeDoubleQuotes(tagOptionsText));
+            }
+            catch (FormatException e)
+            {
+                throw new TagOptionsParseException(tag.RawText, e);
+            }
+        }
+
+        // container open tag
+        if (tagName.StartsWith(delimiters.ContainerTagOpen, StringComparison.Ordinal))
         {
             tag.Disposition = TagDisposition.Open;
-            tag.Name = tagContent.Substring(this.delimiters.ContainerTagOpen.Length).Trim();
-
+            tag.Name = tagName.Substring(delimiters.ContainerTagOpen.Length).Trim();
+            return;
         }
-        else if (tagContent.StartsWith(this.delimiters.ContainerTagClose))
+
+        // container close tag
+        if (tagName.StartsWith(delimiters.ContainerTagClose, StringComparison.Ordinal))
         {
             tag.Disposition = TagDisposition.Close;
-            tag.Name = tagContent.Substring(this.delimiters.ContainerTagClose.Length).Trim();
+            tag.Name = tagName.Substring(delimiters.ContainerTagClose.Length).Trim();
+            return;
+        }
 
-        }
-        else
-        {
-            tag.Disposition = TagDisposition.SelfClosed;
-            tag.Name = tagContent;
-        }
+        // self-closed tag
+        tag.Disposition = TagDisposition.SelfClosed;
+        tag.Name = tagName;
     }
 }

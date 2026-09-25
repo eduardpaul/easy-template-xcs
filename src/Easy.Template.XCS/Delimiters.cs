@@ -1,44 +1,61 @@
 namespace Easy.Template.XCS;
 
+/// <summary>
+/// The delimiters used to identify tags in the template.
+/// </summary>
 public class Delimiters
 {
     public string TagStart { get; set; } = "{";
     public string TagEnd { get; set; } = "}";
     public string ContainerTagOpen { get; set; } = "#";
     public string ContainerTagClose { get; set; } = "/";
+    public string TagOptionsStart { get; set; } = "[";
+    public string TagOptionsEnd { get; set; } = "]";
 
-    public Delimiters(Delimiters initial = null)
+    public Delimiters()
+    {
+    }
+
+    /// <summary>
+    /// Create a validated copy of the specified delimiters.
+    /// </summary>
+    public Delimiters(Delimiters? initial)
     {
         if (initial != null)
         {
-            TagStart = initial.TagStart ?? "{";
-            TagEnd = initial.TagEnd ?? "}";
-            ContainerTagOpen = initial.ContainerTagOpen ?? "#";
-            ContainerTagClose = initial.ContainerTagClose ?? "/";
+            TagStart = initial.TagStart;
+            TagEnd = initial.TagEnd;
+            ContainerTagOpen = initial.ContainerTagOpen;
+            ContainerTagClose = initial.ContainerTagClose;
+            TagOptionsStart = initial.TagOptionsStart;
+            TagOptionsEnd = initial.TagOptionsEnd;
         }
 
-        EncodeAndValidate();
-
-        if (ContainerTagOpen == ContainerTagClose)
-        {
-            throw new System.Exception($"{nameof(ContainerTagOpen)} can not be equal to {nameof(ContainerTagClose)}");
-        }
+        Validate();
     }
 
-    private void EncodeAndValidate()
+    public void Validate()
     {
-        var keys = new List<string> { TagStart, TagEnd, ContainerTagOpen, ContainerTagClose };
-        foreach (var value in keys)
+        var keys = new (string Name, string? Value)[]
+        {
+            (nameof(TagStart), TagStart),
+            (nameof(TagEnd), TagEnd),
+            (nameof(ContainerTagOpen), ContainerTagOpen),
+            (nameof(ContainerTagClose), ContainerTagClose),
+            (nameof(TagOptionsStart), TagOptionsStart),
+            (nameof(TagOptionsEnd), TagOptionsEnd),
+        };
+
+        foreach (var (name, value) in keys)
         {
             if (string.IsNullOrEmpty(value))
-            {
-                throw new System.Exception($"{value} can not be empty.");
-            }
+                throw new ArgumentException($"{name} can not be empty.");
 
             if (value != value.Trim())
-            {
-                throw new System.Exception($"{value} can not contain leading or trailing whitespace.");
-            }
+                throw new ArgumentException($"{name} can not contain leading or trailing whitespace.");
         }
+
+        if (ContainerTagOpen == ContainerTagClose)
+            throw new ArgumentException($"{nameof(ContainerTagOpen)} can not be equal to {nameof(ContainerTagClose)}");
     }
 }

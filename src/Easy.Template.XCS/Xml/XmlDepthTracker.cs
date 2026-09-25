@@ -1,8 +1,10 @@
+using Easy.Template.XCS.Errors;
+
 namespace Easy.Template.XCS.Xml;
 
 public class XmlDepthTracker
 {
-    private int depth = 0;
+    private int depth;
     private readonly int maxDepth;
 
     public XmlDepthTracker(int maxDepth)
@@ -14,9 +16,7 @@ public class XmlDepthTracker
     {
         depth++;
         if (depth > maxDepth)
-        {
             throw new MaxXmlDepthException(maxDepth);
-        }
     }
 
     public void Decrement()
