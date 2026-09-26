@@ -1,25 +1,32 @@
 // Runs every scenario once on every engine and checks that the generated
 // documents are equivalent (same text, same structure, no leftover tags).
 //
-//   node verify.mjs [--engines js,wasm-interp,wasm-aot] [--out <dir>]
+//   node verify.mjs [--engines js,wasm-interp-net10,...] [--out <dir>]
+//
+// Without --engines, every engine that has been built is checked.
 
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { engineNames, loadEngine } from './lib/engines.mjs';
+import { engineNames, loadEngine, wasmBundleDir } from './lib/engines.mjs';
 import { inspectDocx } from './lib/docx.mjs';
 import { readTemplate, scenarios } from './lib/scenarios.mjs';
 
 const { values: args } = parseArgs({
     options: {
-        engines: { type: 'string', default: engineNames.join(',') },
+        engines: { type: 'string' },
         out: { type: 'string' }
     }
 });
 
 const engines = [];
-for (const name of args.engines.split(','))
+for (const name of (args.engines ?? engineNames.join(',')).split(',')) {
+    if (!args.engines && name.startsWith('wasm-') && !existsSync(path.join(wasmBundleDir(name), 'dotnet.js'))) {
+        console.log(`skip ${name} (not built)`);
+        continue;
+    }
     engines.push(await loadEngine(name));
+}
 
 let failures = 0;
 for (const scenario of scenarios) {

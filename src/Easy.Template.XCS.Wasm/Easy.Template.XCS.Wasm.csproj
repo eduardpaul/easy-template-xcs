@@ -5,13 +5,14 @@
     [JSExport] surface so the library can be called from JavaScript (Node.js
     or browsers). See ../../bench/README.md.
 
-    Build variants:
-      dotnet publish -c Release                              (Mono interpreter)
-      dotnet publish -c Release -p:RunAOTCompilation=true    (AOT, needs the wasm-tools workload)
+    Build variants (add -f net11.0 for .NET 11, needs SDK 11):
+      dotnet publish -c Release -f net10.0                            (interpreter)
+      dotnet publish -c Release -f net10.0 -p:RunAOTCompilation=true  (AOT, needs the wasm-tools workload)
   -->
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFrameworks>net10.0</TargetFrameworks>
+    <TargetFrameworks Condition="'$(CanTargetNet11)' == 'true'">$(TargetFrameworks);net11.0</TargetFrameworks>
     <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
     <OutputType>Exe</OutputType>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>

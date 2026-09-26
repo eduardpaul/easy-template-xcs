@@ -8,7 +8,7 @@
 // Each (engine, scenario) steady state measurement gets its own process with a
 // timeout, so a hung engine is reported as such instead of stalling the run.
 //
-//   node bench.mjs [--engines js,wasm-interp,wasm-aot,dotnet-native] [--scenarios a,b]
+//   node bench.mjs [--engines js,wasm-interp-net10,wasm-aot-net11,...] [--scenarios a,b]
 //                  [--warmup-ms 1000] [--measure-ms 3000] [--cold-runs 5]
 //                  [--timeout-ms 60000] [--out results]
 
@@ -23,8 +23,10 @@ import { findScenarios } from './lib/scenarios.mjs';
 const benchDir = import.meta.dirname;
 const repoDir = path.resolve(benchDir, '..');
 const fixturesDir = path.join(repoDir, 'src', 'Easy.Template.XCS.Test', 'Fixtures', 'Files');
-const nativeDll = path.join(benchDir, 'dotnet', 'bin', 'Release', 'net10.0', 'Easy.Template.XCS.Bench.dll');
-const allEngines = [...engineNames, 'dotnet-native'];
+const nativeEngines = { 'dotnet-native-net10': 'net10.0', 'dotnet-native-net11': 'net11.0' };
+const nativeDll = engine => path.join(benchDir, 'dotnet', 'bin', 'Release', nativeEngines[engine], 'Easy.Template.XCS.Bench.dll');
+const isNative = engine => engine in nativeEngines;
+const allEngines = [...engineNames, ...Object.keys(nativeEngines)];
 
 const { values: args } = parseArgs({
     options: {
@@ -47,8 +49,8 @@ const timeoutMs = Number(args['timeout-ms']);
 const results = { environment: environment(), settings: { ...args, gcParams: process.env.XCS_WASM_GC_PARAMS ?? null }, engines: {} };
 
 for (const engine of engines) {
-    const result = engine === 'dotnet-native' ? runNative() : runNodeSteady(engine);
-    if (engine !== 'dotnet-native')
+    const result = isNative(engine) ? runNative(engine) : runNodeSteady(engine);
+    if (!isNative(engine))
         result.cold = runNodeCold(engine);
     results.engines[engine] = { ...result, bundle: bundleSize(engine) };
 }
@@ -101,7 +103,7 @@ function runNodeCold(engine) {
     };
 }
 
-function runNative() {
+function runNative(engine) {
     // hand the exact same data to .NET: JSON, with binary values as base64
     // (the same encoding lib/engines.mjs uses for the WebAssembly engine)
     const exported = scenarios.map(s => ({
@@ -115,10 +117,10 @@ function runNative() {
     const file = path.join(benchDir, 'dist', 'scenarios.json');
     mkdirSync(path.dirname(file), { recursive: true });
     writeFileSync(file, JSON.stringify(exported));
-    log('[dotnet-native] all scenarios');
-    const { lines, timedOut } = run(dotnetPath(), [nativeDll, file, args['warmup-ms'], args['measure-ms']], timeoutMs * scenarios.length);
+    log(`[${engine}] all scenarios`);
+    const { lines, timedOut } = run(dotnetPath(), [nativeDll(engine), file, args['warmup-ms'], args['measure-ms']], timeoutMs * scenarios.length);
     if (timedOut)
-        throw new Error('dotnet-native timed out');
+        throw new Error(`${engine} timed out`);
     return lines[lines.length - 1];
 }
 
@@ -138,9 +140,9 @@ function isAvailable(engine) {
     if (!allEngines.includes(engine))
         throw new Error(`Unknown engine '${engine}'. Expected one of: ${allEngines.join(', ')}`);
     const missing =
-        engine.startsWith('wasm-') && !existsSync(path.join(wasmBundleDir(engine.slice(5)), 'dotnet.js')) ? 'WebAssembly bundle not built' :
-        engine === 'dotnet-native' && !existsSync(nativeDll) ? 'native harness not built' :
-        engine === 'dotnet-native' && !dotnetPath() ? '.NET SDK not found' :
+        engine.startsWith('wasm-') && !existsSync(path.join(wasmBundleDir(engine), 'dotnet.js')) ? 'WebAssembly bundle not built' :
+        isNative(engine) && !existsSync(nativeDll(engine)) ? 'native harness not built' :
+        isNative(engine) && !dotnetPath() ? '.NET SDK not found' :
         null;
     if (missing)
         log(`Skipping ${engine}: ${missing} (run 'npm run build')`);
@@ -169,7 +171,7 @@ function bundleSize(engine) {
         return { bytes: deps.reduce((sum, d) => sum + dirSize(path.join(benchDir, 'node_modules', d)), 0), what: 'node_modules (package + dependencies)' };
     }
     if (engine.startsWith('wasm-'))
-        return { bytes: dirSize(wasmBundleDir(engine.slice(5))), what: '_framework (runtime + assemblies)' };
+        return { bytes: dirSize(wasmBundleDir(engine)), what: '_framework (runtime + assemblies)' };
     return null;
 }
 
@@ -247,6 +249,21 @@ function report({ environment: env, settings, engines: data }) {
     table(['Scenario', ...names.map(n => `\`${n}\``)], scenarios.map(s => [
         s.name, ...names.map(n => stat(n, s.name, 'p95', fmt))
     ]));
+
+    // .NET 11 vs .NET 10, for every engine measured on both
+    const pairs = names.filter(n => n.endsWith('-net11') && data[n.replace(/-net11$/, '-net10')])
+        .map(n => [n.replace(/-net11$/, '-net10'), n]);
+    if (pairs.length) {
+        lines.push('## .NET 11 vs .NET 10 (speedup of the median, higher is better)', '');
+        lines.push('`1.25x` means .NET 11 generates the document 25% faster than .NET 10 (`net10 median / net11 median`).', '');
+        table(['Scenario', ...pairs.map(([, n11]) => `\`${n11.replace(/-net11$/, '')}\``)], scenarios.map(s => [
+            s.name, ...pairs.map(([n10, n11]) => {
+                const a = data[n10].scenarios[s.name];
+                const b = data[n11].scenarios[s.name];
+                return a && b ? `${(a.median / b.median).toFixed(2)}x` : hung;
+            })
+        ]));
+    }
 
     const coldNames = names.filter(n => data[n].cold);
     lines.push('## Cold start (fresh Node.js process, ms)', '');

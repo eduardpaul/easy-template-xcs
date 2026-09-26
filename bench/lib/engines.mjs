@@ -8,23 +8,33 @@ import { pathToFileURL } from 'node:url';
 
 const benchDir = path.resolve(import.meta.dirname, '..');
 
-export const engineNames = ['js', 'wasm-interp', 'wasm-aot'];
+// WebAssembly builds of Easy.Template.XCS, per .NET version (see build.sh):
+//   interp   Mono, IL interpreter (the default .NET wasm runtime)
+//   aot      Mono, IL compiled ahead of time to wasm
+//   coreclr  CoreCLR on WebAssembly (.NET 11+, interpreter)
+export const wasmEngines = {
+    'wasm-interp-net10': { tfm: 'net10', variant: 'interp' },
+    'wasm-aot-net10': { tfm: 'net10', variant: 'aot' },
+    'wasm-interp-net11': { tfm: 'net11', variant: 'interp' },
+    'wasm-aot-net11': { tfm: 'net11', variant: 'aot' },
+    'wasm-coreclr-net11': { tfm: 'net11', variant: 'coreclr' }
+};
 
-export function wasmBundleDir(variant) {
-    return path.join(benchDir, 'dist', variant, 'wwwroot', '_framework');
+export const engineNames = ['js', ...Object.keys(wasmEngines)];
+
+const variantLabels = { interp: 'Mono interpreter', aot: 'Mono AOT', coreclr: 'CoreCLR interpreter' };
+
+export function wasmBundleDir(engine) {
+    const { tfm, variant } = wasmEngines[engine];
+    return path.join(benchDir, 'dist', tfm, variant, 'wwwroot', '_framework');
 }
 
 export async function loadEngine(name) {
-    switch (name) {
-        case 'js':
-            return loadJs();
-        case 'wasm-interp':
-            return loadWasm('interp');
-        case 'wasm-aot':
-            return loadWasm('aot');
-        default:
-            throw new Error(`Unknown engine '${name}'. Expected one of: ${engineNames.join(', ')}`);
-    }
+    if (name === 'js')
+        return loadJs();
+    if (wasmEngines[name])
+        return loadWasm(name);
+    throw new Error(`Unknown engine '${name}'. Expected one of: ${engineNames.join(', ')}`);
 }
 
 // The original JavaScript library.
@@ -40,8 +50,9 @@ async function loadJs() {
 }
 
 // Easy.Template.XCS compiled to WebAssembly (see src/Easy.Template.XCS.Wasm).
-async function loadWasm(variant) {
-    const dir = wasmBundleDir(variant);
+async function loadWasm(name) {
+    const { variant } = wasmEngines[name];
+    const dir = wasmBundleDir(name);
     const entry = path.join(dir, 'dotnet.js');
     if (!existsSync(entry))
         throw new Error(`WebAssembly bundle not found at ${dir}. Run 'npm run build' first.`);
@@ -55,8 +66,8 @@ async function loadWasm(variant) {
     const api = exports.Easy.Template.XCS.Wasm.Exports;
 
     return {
-        name: `wasm-${variant}`,
-        version: `Easy.Template.XCS ${api.Version().split('+')[0]} (${variant === 'aot' ? 'wasm AOT' : 'wasm interpreter'})`,
+        name,
+        version: `Easy.Template.XCS ${api.Version().split('+')[0]} on ${api.Runtime()}, wasm ${variantLabels[variant]}`,
         // Data crosses the JS/.NET boundary as JSON; binary values (images)
         // are sent as base64 strings. That cost is part of the measurement.
         process: async (template, data) => api.Process(template, JSON.stringify(data, binaryAsBase64))

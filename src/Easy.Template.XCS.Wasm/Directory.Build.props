@@ -2,10 +2,15 @@
 
   <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
 
-  <!-- keep the interpreter and AOT builds apart so they never share intermediate files -->
+  <!-- keep the build variants apart so they never share intermediate files -->
   <PropertyGroup Condition="'$(RunAOTCompilation)' == 'true'">
     <BaseIntermediateOutputPath>obj/aot/</BaseIntermediateOutputPath>
     <BaseOutputPath>bin/aot/</BaseOutputPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(UseMonoRuntime)' == 'false'">
+    <!-- CoreCLR on WebAssembly (.NET 11+) -->
+    <BaseIntermediateOutputPath>obj/coreclr/</BaseIntermediateOutputPath>
+    <BaseOutputPath>bin/coreclr/</BaseOutputPath>
   </PropertyGroup>
 
   <PropertyGroup>

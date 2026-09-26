@@ -18,6 +18,12 @@ public static partial class Exports
     public static string Version() => TemplateHandler.Version;
 
     /// <summary>
+    /// The .NET runtime executing the module, for instance ".NET 11.0.0-rc.1...".
+    /// </summary>
+    [JSExport]
+    public static string Runtime() => System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription;
+
+    /// <summary>
     /// Process the template with the specified JSON data and return the resulting docx.
     /// </summary>
     [JSExport]

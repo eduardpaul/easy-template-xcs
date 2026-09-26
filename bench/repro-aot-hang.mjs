@@ -2,12 +2,12 @@
 // image scenario repeatedly and prints a counter after every document.
 // With .NET 10.0.12 the counter stops at 48 and the process spins at 100% CPU.
 //
-//   node repro-aot-hang.mjs [engine=wasm-aot] [iterations=200]
+//   node repro-aot-hang.mjs [engine=wasm-aot-net10] [iterations=200]
 
 import { loadEngine } from './lib/engines.mjs';
 import { readTemplate, scenarios } from './lib/scenarios.mjs';
 
-const [engineName = 'wasm-aot', iterations = '200'] = process.argv.slice(2);
+const [engineName = 'wasm-aot-net10', iterations = '200'] = process.argv.slice(2);
 const engine = await loadEngine(engineName);
 const scenario = scenarios.find(s => s.name === 'image');
 const template = readTemplate(scenario.template);

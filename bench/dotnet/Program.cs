@@ -48,7 +48,7 @@ foreach (var scenario in scenarios)
 
 var output = new JsonObject
 {
-    ["engine"] = "dotnet-native",
+    ["engine"] = $"dotnet-native-net{Environment.Version.Major}",
     ["version"] = $"Easy.Template.XCS {TemplateHandler.Version.Split('+')[0]} (native .NET {Environment.Version})",
     ["scenarios"] = results,
     ["memory"] = new JsonObject

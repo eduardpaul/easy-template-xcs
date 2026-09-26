@@ -4,7 +4,7 @@ Generate docx documents from templates in .NET.
 
 A port of [easy-template-x](https://github.com/alonrbar/easy-template-x) (the JavaScript library by Alon Bar) to modern .NET, built on top of the [Open XML SDK](https://github.com/dotnet/Open-XML-SDK).
 
-- Targets `net8.0` and `net10.0`.
+- Targets `net8.0`, `net10.0` and `net11.0` (`net11.0` is built when the .NET 11 SDK is used).
 - Same template syntax as `easy-template-x`: `{tags}`, `{#loops}{/loops}`, conditions, images, links, raw xml.
 - Template data can be anonymous objects, POCOs, dictionaries or `System.Text.Json` nodes.
 
