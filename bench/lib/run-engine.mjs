@@ -31,15 +31,15 @@ const startupMs = performance.now() - startupBegin;
 
 if (args.mode === 'cold') {
     // one call per scenario on a fresh engine: what a CLI / serverless
-    // invocation would pay
-    const firstCallMs = {};
+    // invocation would pay. One line per scenario, so the results collected
+    // so far survive if the process has to be killed.
+    print({ engine: engine.name, version: engine.version, startupMs });
     for (const scenario of scenarios) {
         const template = readTemplate(scenario.template);
         const begin = performance.now();
         await engine.process(template, scenario.data());
-        firstCallMs[scenario.name] = performance.now() - begin;
+        print({ scenario: scenario.name, firstCallMs: performance.now() - begin });
     }
-    print({ engine: engine.name, version: engine.version, startupMs, firstCallMs });
 } else {
     const warmupMs = Number(args['warmup-ms']);
     const measureMs = Number(args['measure-ms']);

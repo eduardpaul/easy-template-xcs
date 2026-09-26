@@ -47,7 +47,10 @@ async function loadWasm(variant) {
         throw new Error(`WebAssembly bundle not found at ${dir}. Run 'npm run build' first.`);
 
     const { dotnet } = await import(pathToFileURL(entry).href);
-    const runtime = await dotnet.create();
+    // XCS_WASM_GC_PARAMS is passed to the Mono GC as MONO_GC_PARAMS
+    // (for instance 'nursery-size=64m', see bench/README.md)
+    const gcParams = process.env.XCS_WASM_GC_PARAMS;
+    const runtime = await (gcParams ? dotnet.withEnvironmentVariable('MONO_GC_PARAMS', gcParams) : dotnet).create();
     const exports = await runtime.getAssemblyExports('Easy.Template.XCS.Wasm');
     const api = exports.Easy.Template.XCS.Wasm.Exports;
 

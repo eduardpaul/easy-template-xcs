@@ -8,4 +8,9 @@
     <BaseOutputPath>bin/aot/</BaseOutputPath>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <!-- neither build may pick up the other one's generated sources -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj/**;bin/**</DefaultItemExcludes>
+  </PropertyGroup>
+
 </Project>

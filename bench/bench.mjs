@@ -5,8 +5,12 @@
 // Every engine runs in its own fresh process so JIT state, GC heaps and
 // caches never leak from one engine into another.
 //
+// Each (engine, scenario) steady state measurement gets its own process with a
+// timeout, so a hung engine is reported as such instead of stalling the run.
+//
 //   node bench.mjs [--engines js,wasm-interp,wasm-aot,dotnet-native] [--scenarios a,b]
-//                  [--warmup-ms 1000] [--measure-ms 3000] [--cold-runs 5] [--out results]
+//                  [--warmup-ms 1000] [--measure-ms 3000] [--cold-runs 5]
+//                  [--timeout-ms 60000] [--out results]
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
@@ -29,6 +33,7 @@ const { values: args } = parseArgs({
         'warmup-ms': { type: 'string', default: '1000' },
         'measure-ms': { type: 'string', default: '3000' },
         'cold-runs': { type: 'string', default: '5' },
+        'timeout-ms': { type: 'string', default: '60000' },
         out: { type: 'string', default: path.join(benchDir, 'results') }
     }
 });
@@ -38,23 +43,14 @@ const engines = args.engines.split(',').filter(isAvailable);
 const loopArgs = ['--warmup-ms', args['warmup-ms'], '--measure-ms', args['measure-ms']];
 const scenarioArg = ['--scenarios', scenarios.map(s => s.name).join(',')];
 
-const results = { environment: environment(), settings: { ...args }, engines: {} };
+const timeoutMs = Number(args['timeout-ms']);
+const results = { environment: environment(), settings: { ...args, gcParams: process.env.XCS_WASM_GC_PARAMS ?? null }, engines: {} };
 
 for (const engine of engines) {
-    log(`\n[${engine}] steady state`);
-    const steady = engine === 'dotnet-native' ? runNative() : runNode(engine, ['--mode', 'steady', ...loopArgs]);
-
-    let cold;
-    if (engine !== 'dotnet-native') {
-        log(`[${engine}] cold start x${args['cold-runs']}`);
-        const runs = Array.from({ length: Number(args['cold-runs']) }, () => runNode(engine, ['--mode', 'cold']));
-        cold = {
-            startupMs: median(runs.map(r => r.startupMs)),
-            firstCallMs: Object.fromEntries(scenarios.map(s => [s.name, median(runs.map(r => r.firstCallMs[s.name]))]))
-        };
-    }
-
-    results.engines[engine] = { ...steady, cold, bundle: bundleSize(engine) };
+    const result = engine === 'dotnet-native' ? runNative() : runNodeSteady(engine);
+    if (engine !== 'dotnet-native')
+        result.cold = runNodeCold(engine);
+    results.engines[engine] = { ...result, bundle: bundleSize(engine) };
 }
 
 mkdirSync(args.out, { recursive: true });
@@ -69,7 +65,40 @@ log(`Results written to ${path.relative(process.cwd(), args.out) || '.'}/results
 //
 
 function runNode(engine, extraArgs) {
-    return run(process.execPath, ['--expose-gc', path.join(benchDir, 'lib', 'run-engine.mjs'), '--engine', engine, ...scenarioArg, ...extraArgs]);
+    return run(process.execPath, ['--expose-gc', path.join(benchDir, 'lib', 'run-engine.mjs'), '--engine', engine, ...extraArgs]);
+}
+
+function runNodeSteady(engine) {
+    const result = { scenarios: {}, memory: { peakRssMb: 0 } };
+    for (const scenario of scenarios) {
+        log(`[${engine}] ${scenario.name}`);
+        const { lines, timedOut } = runNode(engine, ['--mode', 'steady', '--scenarios', scenario.name, ...loopArgs]);
+        if (timedOut) {
+            log(`  timed out after ${timeoutMs} ms`);
+            result.scenarios[scenario.name] = null;
+            continue;
+        }
+        const run = lines[lines.length - 1];
+        result.version = run.version;
+        result.scenarios[scenario.name] = run.scenarios[scenario.name];
+        result.memory.peakRssMb = Math.max(result.memory.peakRssMb, run.memory.peakRssMb);
+    }
+    return result;
+}
+
+function runNodeCold(engine) {
+    log(`[${engine}] cold start x${args['cold-runs']}`);
+    const runs = Array.from({ length: Number(args['cold-runs']) }, () => {
+        const { lines } = runNode(engine, ['--mode', 'cold', ...scenarioArg]);
+        return {
+            startupMs: lines[0]?.startupMs,
+            firstCallMs: Object.fromEntries(lines.slice(1).map(l => [l.scenario, l.firstCallMs]))
+        };
+    });
+    return {
+        startupMs: median(runs.map(r => r.startupMs)),
+        firstCallMs: Object.fromEntries(scenarios.map(s => [s.name, median(runs.map(r => r.firstCallMs[s.name]))]))
+    };
 }
 
 function runNative() {
@@ -86,15 +115,23 @@ function runNative() {
     const file = path.join(benchDir, 'dist', 'scenarios.json');
     mkdirSync(path.dirname(file), { recursive: true });
     writeFileSync(file, JSON.stringify(exported));
-    return run(dotnetPath(), [nativeDll, file, args['warmup-ms'], args['measure-ms']]);
+    log('[dotnet-native] all scenarios');
+    const { lines, timedOut } = run(dotnetPath(), [nativeDll, file, args['warmup-ms'], args['measure-ms']], timeoutMs * scenarios.length);
+    if (timedOut)
+        throw new Error('dotnet-native timed out');
+    return lines[lines.length - 1];
 }
 
-function run(command, commandArgs) {
-    const child = spawnSync(command, commandArgs, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-    if (child.status !== 0)
+// Runs a child process and parses every stdout line as JSON. A process that
+// runs past the timeout is killed and reported as timed out, keeping the
+// lines it printed so far.
+function run(command, commandArgs, timeout = timeoutMs) {
+    const child = spawnSync(command, commandArgs, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout, killSignal: 'SIGKILL' });
+    const timedOut = child.error?.code === 'ETIMEDOUT';
+    if (!timedOut && child.status !== 0)
         throw new Error(`${path.basename(command)} ${commandArgs.join(' ')} failed (${child.status}):\n${child.stderr}${child.stdout}`);
-    const lastLine = child.stdout.trim().split('\n').pop();
-    return JSON.parse(lastLine);
+    const lines = child.stdout.split('\n').filter(l => l.startsWith('{')).map(l => JSON.parse(l));
+    return { lines, timedOut };
 }
 
 function isAvailable(engine) {
@@ -176,11 +213,18 @@ function report({ environment: env, settings, engines: data }) {
         lines.push('');
     };
     const ratio = (value, base) => (base ? ` (${(value / base).toFixed(1)}x)` : '');
+    const hung = 'hung ⚠';
+    const stat = (name, scenario, key, format) => {
+        const s = data[name].scenarios[scenario];
+        return s ? format(s[key]) : hung;
+    };
 
     lines.push('# Benchmark results', '');
     lines.push(`- Date: ${env.date}`, `- Node.js ${env.node} (V8 ${env.v8})${env.dotnetSdk ? `, .NET SDK ${env.dotnetSdk}` : ''}`,
         `- ${env.os}, ${env.cpu}, ${env.memoryGb} GB RAM`,
-        `- Warmup ${settings['warmup-ms']} ms, measure ${settings['measure-ms']} ms per scenario, cold start = median of ${settings['cold-runs']} fresh processes`, '');
+        `- Warmup ${settings['warmup-ms']} ms, measure ${settings['measure-ms']} ms per scenario (one fresh process each), cold start = median of ${settings['cold-runs']} fresh processes`,
+        ...(settings.gcParams ? [`- WebAssembly engines run with \`MONO_GC_PARAMS=${settings.gcParams}\``] : []),
+        '');
     lines.push('Engines:', '');
     for (const name of names)
         lines.push(`- \`${name}\`: ${data[name].version}`);
@@ -190,20 +234,18 @@ function report({ environment: env, settings, engines: data }) {
     lines.push('Ratios are relative to `js` (the original easy-template-x).', '');
     table(['Scenario', ...names.map(n => `\`${n}\``)], scenarios.map(s => [
         s.name,
-        ...names.map(n => {
-            const median = data[n].scenarios[s.name].median;
-            return `${fmt(median)}${n === 'js' ? '' : ratio(median, baseline?.scenarios[s.name].median)}`;
-        })
+        ...names.map(n => stat(n, s.name, 'median', median =>
+            `${fmt(median)}${n === 'js' ? '' : ratio(median, baseline?.scenarios[s.name]?.median)}`))
     ]));
 
     lines.push('## Throughput (documents per second, higher is better)', '');
     table(['Scenario', ...names.map(n => `\`${n}\``)], scenarios.map(s => [
-        s.name, ...names.map(n => data[n].scenarios[s.name].opsPerSec.toFixed(1))
+        s.name, ...names.map(n => stat(n, s.name, 'opsPerSec', x => x.toFixed(1)))
     ]));
 
     lines.push('## Tail latency (p95 ms)', '');
     table(['Scenario', ...names.map(n => `\`${n}\``)], scenarios.map(s => [
-        s.name, ...names.map(n => fmt(data[n].scenarios[s.name].p95))
+        s.name, ...names.map(n => stat(n, s.name, 'p95', fmt))
     ]));
 
     const coldNames = names.filter(n => data[n].cold);
@@ -212,7 +254,10 @@ function report({ environment: env, settings, engines: data }) {
         'on a fresh engine (scenarios run in order, so later rows benefit from code already warmed by earlier ones).', '');
     table(['', ...coldNames.map(n => `\`${n}\``)], [
         ['startup', ...coldNames.map(n => fmt(data[n].cold.startupMs))],
-        ...scenarios.map(s => [`first ${s.name}`, ...coldNames.map(n => fmt(data[n].cold.firstCallMs[s.name]))])
+        ...scenarios.map(s => [`first ${s.name}`, ...coldNames.map(n => {
+            const ms = data[n].cold.firstCallMs[s.name];
+            return ms === undefined ? hung : fmt(ms);
+        })])
     ]);
 
     lines.push('## Footprint', '');
@@ -220,6 +265,9 @@ function report({ environment: env, settings, engines: data }) {
         ['peak RSS (MB)', ...names.map(n => data[n].memory.peakRssMb.toFixed(0))],
         ['on disk (MB)', ...names.map(n => (data[n].bundle ? (data[n].bundle.bytes / 1024 ** 2).toFixed(1) : '-'))]
     ]);
+
+    if (Object.values(data).some(e => Object.values(e.scenarios).includes(null)))
+        lines.push(`${hung}: the engine did not finish within the ${settings['timeout-ms']} ms timeout (see bench/README.md).`, '');
 
     return lines.join('\n');
 }
@@ -229,7 +277,9 @@ function fmt(ms) {
 }
 
 function median(values) {
-    const sorted = [...values].sort((a, b) => a - b);
+    const sorted = values.filter(v => v !== undefined).sort((a, b) => a - b);
+    if (sorted.length === 0)
+        return undefined;
     const mid = Math.floor(sorted.length / 2);
     return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
