@@ -472,6 +472,10 @@ dotnet test
 
 The test suite uses the original `easy-template-x` fixture documents (in `src/Easy.Template.XCS.Test/Fixtures`) and validates the generated documents against the Open XML schema.
 
+### WebAssembly
+
+`src/Easy.Template.XCS.Wasm` compiles the library to WebAssembly (`browser-wasm`) with a small `[JSExport]` API, so it can be called from Node.js or the browser. [`bench/`](bench/README.md) compares its performance in Node.js with the original `easy-template-x`.
+
 ## License
 
 [MIT](LICENSE).

@@ -1,0 +1,19 @@
+{
+  "name": "easy-template-xcs-bench",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Node.js benchmark: easy-template-x (JavaScript) vs Easy.Template.XCS compiled to WebAssembly",
+  "type": "module",
+  "scripts": {
+    "build": "bash ./build.sh",
+    "verify": "node ./verify.mjs",
+    "bench": "node ./bench.mjs"
+  },
+  "dependencies": {
+    "easy-template-x": "7.2.8",
+    "jszip": "3.10.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
