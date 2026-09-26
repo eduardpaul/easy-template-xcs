@@ -7,9 +7,4 @@
     <AnalysisLevel>latest</AnalysisLevel>
     <Deterministic>true</Deterministic>
   </PropertyGroup>
-
-  <PropertyGroup>
-    <!-- net11.0 is added to the target frameworks when the SDK can build it (SDK 11+) -->
-    <CanTargetNet11 Condition="$([MSBuild]::VersionGreaterThanOrEquals('$(NETCoreSdkVersion)', '11.0'))">true</CanTargetNet11>
-  </PropertyGroup>
 </Project>

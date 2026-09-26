@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
-    <TargetFrameworks Condition="'$(CanTargetNet11)' == 'true'">$(TargetFrameworks);net11.0</TargetFrameworks>
+    <TargetFrameworks Condition="'$(NETCoreSdkVersion)' != '' and $([MSBuild]::VersionGreaterThanOrEquals('$(NETCoreSdkVersion)', '11.0'))">$(TargetFrameworks);net11.0</TargetFrameworks>
     <RootNamespace>Easy.Template.XCS</RootNamespace>
     <AssemblyName>Easy.Template.XCS</AssemblyName>
     <Version>1.0.0</Version>
